@@ -73,6 +73,9 @@ header h1 small{display:block;font:400 12px Nunito,sans-serif;opacity:.75}
 .fol{position:absolute;bottom:3.5cqw;font:700 1.9cqw 'DM Sans',sans-serif;opacity:.6;z-index:3}.fol.l{left:7cqw}.fol.r{right:7cqw}
 .in>*{flex:none}.card{overflow:visible}
 .tm b,.ts i{cursor:pointer}.tm{cursor:default}.ts{cursor:default}
+.leaf{transform:translateZ(var(--z,0px)) rotateY(0deg);-webkit-backface-visibility:hidden;backface-visibility:hidden}
+.leaf.flipped{transform:translateZ(var(--z,0px)) rotateY(-180deg)}
+#stage{-webkit-perspective:3000px}
 
 .face.back{transform:rotateY(180deg)}
 .face::after{content:"";position:absolute;inset:0;pointer-events:none}
@@ -129,6 +132,8 @@ const CH=[["Portada",1,1],["Tabla de contenido",2,0],["Una carta para quienes co
 const $=s=>document.querySelector(s),book=$('#book'),stage=$('#stage');
 let single=false,cur=0,leaves=[],zoom=1,L=0,FR=false,lock=0;const FS=[];
 /* --- páginas montadas bajo demanda: solo las cercanas a la posición actual --- */
+function setZ(lf,i,fl){lf.style.zIndex=fl?i:L-i;lf.style.setProperty('--z',((fl?i:L-i)*.4).toFixed(1)+'px')}
+function vis(a,b){for(let k=0;k<L;k++){const on=Math.abs(k-a)<=2||(b!==undefined&&Math.abs(k-b)<=2);const lf=leaves[k];if(on){if(lf.style.display)lf.style.display=''}else if(lf.style.display!=='none')lf.style.display='none'}}
 function fit(el,i){let s=1,g=0;el.style.setProperty('--fs',1);while(el.scrollHeight>el.clientHeight+1&&s>.5&&g++<40){s-=.03;el.style.setProperty('--fs',s.toFixed(2))}FS[i]=s.toFixed(2)}
 function setFace(d){if(d._m)return;const i=d._i;d.innerHTML=i>=0&&i<N?PAGES[i]:'<div class="blank">♥ ✦ ♥</div>';d._m=1;const el=d.querySelector('.in');if(el){if(FS[i]!==undefined)el.style.setProperty('--fs',FS[i]);else if(FR)fit(el,i)}}
 function clearFace(d){if(d._m){d.innerHTML='';d._m=0}}
@@ -147,7 +152,7 @@ function build(){
  for(let i=0;i<L;i++){const lf=document.createElement('div');lf.className='leaf';
   const a=single?face('front',i):face('front',2*i),b=single?face('back',-1):face('back',2*i+1);
   lf.append(a,b);lf._f=[a,b];fr.appendChild(lf);leaves.push(lf)}
- book.appendChild(fr);cur=Math.min(cur,L);size();paint();mount()}
+ book.appendChild(fr);cur=Math.min(cur,L);size();paint();vis(cur);mount()}
 function size(){
  const aw=stage.clientWidth-(single?20:100),ah=stage.clientHeight-20;
  let pw=Math.min(single?aw:aw/2,ah*612/792)*zoom,ph=pw*792/612;
@@ -158,22 +163,22 @@ function shift(){const pw=book.pw||0;let x=0;
  book.style.transform=`translateX(${x}px)`;
  book.classList.toggle('open',!single&&cur>0&&cur<L)}
 function paint(){
- leaves.forEach((lf,i)=>{const fl=i<cur;lf.classList.toggle('flipped',fl);lf.style.zIndex=fl?i:L-i});
+ leaves.forEach((lf,i)=>{const fl=i<cur;lf.classList.toggle('flipped',fl);setZ(lf,i,fl)});
  shift();info()}
 /* --- cambio de hoja: siempre relativo a la posición actual --- */
 function go(n){n=Math.max(0,Math.min(L,n));if(n===cur)return;
  const old=cur,dir=n>old?1:-1,lo=Math.min(n,old),hi=Math.max(n,old),span=hi-lo;
- cur=n;mount(1);setTimeout(mount,120);setTimeout(unmountFar,1500);
+ cur=n;vis(old,n);void book.offsetWidth;mount(1);setTimeout(mount,120);setTimeout(()=>{unmountFar();vis(cur)},1400);
  const A=[];
  for(let i=lo;i<hi;i++){const far=span>3&&(dir>0?i<hi-2:i>=lo+2);const lf=leaves[i],fl=i<cur;
-  if(far){lf.style.transition='none';lf.classList.toggle('flipped',fl);lf.style.zIndex=fl?i:L-i;
+  if(far){lf.style.transition='none';lf.classList.toggle('flipped',fl);setZ(lf,i,fl);
    requestAnimationFrame(()=>requestAnimationFrame(()=>{lf.style.transition=''}))}
   else A.push(i)}
  if(dir<0)A.reverse();
  A.forEach((i,j)=>{const lf=leaves[i],fl=i<cur;lf.classList.add('moving');lf.style.transitionDelay=(j*.08)+'s';lf.classList.toggle('flipped',fl);
-  setTimeout(()=>{lf.style.zIndex=fl?i:L-i},400+j*80);
+  setTimeout(()=>{setZ(lf,i,fl)},400+j*80);
   setTimeout(()=>{lf.classList.remove('moving');lf.style.transitionDelay='0s'},850+A.length*80)});
- leaves.forEach((lf,i)=>{if(i<lo||i>=hi)lf.style.zIndex=i<cur?i:L-i});
+ leaves.forEach((lf,i)=>{if(i<lo||i>=hi)setZ(lf,i,i<cur)});
  shift();info()}
 function nav(n){const t=performance.now();if(t-lock<140)return;lock=t;go(n)}
 function pageNo(){return single?cur+1:Math.min(N,Math.max(1,cur*2))}
@@ -214,7 +219,7 @@ $('#bFull').onclick=()=>{document.fullscreenElement?document.exitFullscreen():do
 $('#bPdf').onclick=()=>{try{const bin=atob(PDF64),a=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)a[i]=bin.charCodeAt(i);
  const u=URL.createObjectURL(new Blob([a],{type:'application/pdf'})),l=document.createElement('a');l.href=u;l.download='Conociendo mi mundo emocional - Kit de Regulacion Emocional.pdf';document.body.appendChild(l);l.click();l.remove()}catch(e){console.error(e)}};
 let rz=0;
-addEventListener('resize',()=>{clearTimeout(rz);rz=setTimeout(()=>{const s=stage.clientWidth<760;if(s!==single){const p=pageNo();single=s;build();cur=pageToLeaf(p);paint();mount()}else size()},150)});
+addEventListener('resize',()=>{clearTimeout(rz);rz=setTimeout(()=>{const s=stage.clientWidth<760;if(s!==single){const p=pageNo();single=s;build();cur=pageToLeaf(p);paint();vis(cur);mount()}else size()},150)});
 build();
 
 </script>
